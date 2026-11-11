@@ -13,6 +13,7 @@ pub mod addons;
 pub mod commands;
 pub mod config;
 pub mod crypto;
+pub mod denoise;
 pub mod gfx;
 pub mod hud;
 pub mod media;
@@ -35,7 +36,7 @@ pub use gfx::Draw;
 
 pub const ID: &str = "vcraft";
 pub const NAME: &str = "VCraft";
-pub const VERSION: &str = "2.3.0";
+pub const VERSION: &str = "2.4.0";
 pub const DESCRIPTION: &str =
     "Voice calls, group chats and direct messages with your friends from anywhere in Minecraft. End-to-end encrypted.";
 pub const COMMAND: &str = "vc";
@@ -199,6 +200,7 @@ impl Core {
         p.push_to_talk_held = self.ptt_held;
         p.threshold_db = self.cfg.voice_threshold_db;
         p.mic_volume = self.cfg.mic_volume;
+        p.noise_suppression = self.cfg.noise_suppression;
         p.output_volume = self.cfg.output_volume;
         p.muted_users = self.cfg.muted_users.iter().cloned().collect();
         p.room_gains = self.addons.room_gains();

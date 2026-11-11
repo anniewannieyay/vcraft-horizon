@@ -6,9 +6,9 @@ you submit, if you like.
 | Field | Value |
 |---|---|
 | Kind | Native mod |
-| File | `vcraft-2.3.0.hnmod` (built with `native.py package`) |
+| File | `vcraft-2.4.0.hnmod` |
 | Id | `vcraft` |
-| Version | `2.3.0` |
+| Version | `2.4.0` |
 | Minecraft version | `26.3` |
 | Name | VCraft |
 | Licence (SPDX) | `MIT` |
@@ -23,7 +23,7 @@ Voice calls, group chats and direct messages with your friends from anywhere in 
 
 ## What changed (first release)
 
-First release on Horizon: a native port of VCraft 2.3.0 with voice calls, DMs, group chats, and the Proximity, Announcements and Group rules addons.
+First release on Horizon: a native port of VCraft with voice calls, DMs, group chats, and the Proximity, Announcements and Group rules addons. New in 2.4.0: microphone noise suppression (on by default, switch in Settings > Voice).
 
 ## Description (Markdown, at least 50 characters)
 
@@ -32,6 +32,7 @@ you're in single player or on any server.
 
 **Features**
 - 1:1 and group **voice calls**, with voice activity or push to talk
+- **Noise suppression** that removes fan, hum and hiss from your mic
 - **Direct messages** and **group chats**, plus a community lobby
 - **End-to-end encrypted**: X25519 key agreement, Ed25519 signatures and a
   safety number for each friend

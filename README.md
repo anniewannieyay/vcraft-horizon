@@ -5,7 +5,7 @@ in Minecraft, end-to-end encrypted. This is the native Horizon port of the
 VCraft Fabric mod.
 
 - **Mod id:** `vcraft`
-- **Version:** 2.3.0
+- **Version:** 2.4.0
 - **Game:** Minecraft 26.3 (Horizon, pinned to commit `fdc87aec`)
 - **Kind:** native mod (`.hnmod`)
 - **Licence:** MIT
@@ -13,6 +13,9 @@ VCraft Fabric mod.
 ## Features
 
 - 1:1 and group voice calls, with voice activity or push to talk
+- Noise suppression for your microphone (on by default; switch it off in
+  VCraft's settings under Voice). It removes steady background noise such as
+  fans, hum and hiss, and adds 20 ms of delay.
 - Direct messages and group chats, plus a community lobby chat
 - End-to-end encryption: X25519 key agreement, Ed25519 signatures, and
   per-message AEAD. Each friend has a safety number you can compare.
@@ -73,10 +76,10 @@ On Windows, use WSL for the check and package steps. From a checkout of
 python3 native/tools/native.py check /path/to/vcraft-horizon
 python3 native/tools/native.py check --horizon latest /path/to/vcraft-horizon
 python3 native/tools/native.py package /path/to/vcraft-horizon
-cargo horizon-mod check native/target/vcraft-2.3.0.hnmod
+cargo horizon-mod check native/target/vcraft-2.4.0.hnmod
 ```
 
-`package` writes `native/target/vcraft-2.3.0.hnmod` and prints its SHA-256.
+`package` writes `native/target/vcraft-2.4.0.hnmod` and prints its SHA-256.
 
 ## Licence
 

@@ -1,5 +1,6 @@
 //! The voice engine (`VoiceEngine`): the microphone at 16 kHz mono in 20 ms
-//! frames, voice activity or push to talk, IMA ADPCM, encrypted to the relay;
+//! frames, optional noise suppression, voice activity or push to talk, IMA
+//! ADPCM, encrypted to the relay;
 //! and a jitter-buffered mixer of everyone else's frames to the speakers.
 //! cpal's streams run at the device's own rate; this resamples both ways.
 
@@ -29,6 +30,8 @@ pub struct Params {
     pub push_to_talk_held: bool,
     pub threshold_db: f64,
     pub mic_volume: f64,
+    /// Run the microphone through [`crate::denoise::Denoiser`].
+    pub noise_suppression: bool,
     pub output_volume: f64,
     pub muted_users: HashSet<String>,
     /// Proximity Chat's volume per player in a room (absent: full volume).
@@ -231,9 +234,11 @@ impl Voice {
 
     fn capture_loop(&self, run_id: u64, mic: &MicQueue) {
         let mut encoder = adpcm::Encoder::default();
+        let mut denoiser = crate::denoise::Denoiser::new();
+        let mut denoising = false;
         let mut hangover_until = Instant::now();
         while self.alive(run_id) {
-            let frame: Vec<i16> = {
+            let mut frame: Vec<i16> = {
                 let mut q = mic.samples.lock().unwrap();
                 while q.len() < FRAME_SAMPLES && self.alive(run_id) {
                     q = mic.ready.wait_timeout(q, Duration::from_millis(100)).unwrap().0;
@@ -244,6 +249,17 @@ impl Voice {
                 q.drain(..FRAME_SAMPLES).collect()
             };
             let p = self.params.lock().unwrap().clone();
+            // Before the level meter and the voice activity gate, so noise
+            // alone no longer opens the gate.
+            if p.noise_suppression {
+                if !denoising {
+                    denoiser.reset();
+                    denoising = true;
+                }
+                denoiser.process(&mut frame);
+            } else {
+                denoising = false;
+            }
             let mut sum = 0.0f64;
             let pcm: Vec<i16> = frame
                 .iter()

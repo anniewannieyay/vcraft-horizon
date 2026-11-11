@@ -45,6 +45,7 @@ pub enum Toggle {
     Notifications,
     MessageSound,
     ShareListening,
+    NoiseSuppression,
 }
 
 #[derive(Clone, Debug)]
@@ -1495,6 +1496,7 @@ fn draw_settings(c: &mut Core, ctx: &mut Ctx, x: i32, y: i32, pw: i32, ph: i32) 
     sy = slider_row(ctx, lx, cx, cw, sy, "Mic volume", mv / 2.0, &format!("{}%", (mv * 100.0).round() as i64), Slider::MicVolume);
     let ov = c.cfg.output_volume;
     sy = slider_row(ctx, lx, cx, cw, sy, "Voice volume", ov / 2.0, &format!("{}%", (ov * 100.0).round() as i64), Slider::OutputVolume);
+    sy = toggle_row(ctx, lx, cx, sy, "Noise suppression", c.cfg.noise_suppression, Action::SetToggle(Toggle::NoiseSuppression));
     ctx.g.text("Mic test", lx, sy + 5, gfx::TEXT);
     let testing = voice.mic_test();
     let (b1, b2) = if testing { (gfx::RED, gfx::RED_HI) } else { (gfx::RAISED, gfx::HOVER) };
@@ -1908,6 +1910,7 @@ pub fn run(c: &mut Core, a: Action) {
                     }
                 }
                 Toggle::ShareListening => c.cfg.share_listening = !c.cfg.share_listening,
+                Toggle::NoiseSuppression => c.cfg.noise_suppression = !c.cfg.noise_suppression,
             }
             c.cfg.save();
         }
