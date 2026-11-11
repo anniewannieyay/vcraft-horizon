@@ -1,0 +1,215 @@
+[mod]
+id = "vcraft"
+version = "2.3.0"
+priority = 0
+
+# Pinned: its glue reads the game's connection and players inside `game`
+# (the server joined, single player, joining an invited server), which the
+# stable hook points don't offer. Tested on the 2026-11-08 Nightly.
+[compatibility]
+horizon_revision = "fdc87aecdbd116bf1e08adcd062fcbaea8c2e2ca"
+
+# The relay, end-to-end encryption, voice, the UI and the built-in addons.
+[[crate]]
+id = "engine"
+path = "engine"
+
+# The glue between `Game` and the engine.
+[[module]]
+id = "glue"
+file = "crates/horizon-client/src/game.rs"
+name = "mod_vcraft_glue"
+source = "glue.rs"
+
+[[injection]]
+id = "frame"
+hook = "frame"
+hook_version = 1
+kind = "HEAD"
+helper = "frame.rs"
+bindings = [
+  { name = "game", ty = "&mut crate::game::Game<'_>", value = "&mut *self" },
+]
+
+[[injection]]
+id = "tick"
+hook = "tick"
+hook_version = 1
+kind = "HEAD"
+helper = "tick.rs"
+bindings = [
+  { name = "game", ty = "&mut crate::game::Game<'_>", value = "&mut *self" },
+]
+
+[[injection]]
+id = "key"
+hook = "key"
+hook_version = 1
+kind = "HEAD"
+helper = "key.rs"
+bindings = [
+  { name = "game", ty = "&mut crate::game::Game<'_>", value = "&mut *self" },
+  { name = "key", ty = "&str", value = "key" },
+  { name = "pressed", ty = "bool", value = "pressed" },
+]
+
+[[injection]]
+id = "hud"
+hook = "hud"
+hook_version = 1
+kind = "HEAD"
+helper = "hud.rs"
+bindings = [
+  { name = "game", ty = "&mut crate::game::Game<'_>", value = "&mut *self" },
+  { name = "batch", ty = "&mut horizon_client::hud::HudBatch", value = "&mut *batch" },
+]
+
+[[injection]]
+id = "screen"
+hook = "screen_render_post"
+hook_version = 1
+kind = "HEAD"
+helper = "screen.rs"
+bindings = [
+  { name = "game", ty = "&crate::game::Game<'_>", value = "&*self" },
+  { name = "batch", ty = "&mut horizon_client::hud::HudBatch", value = "&mut *batch" },
+  { name = "screen", ty = "&crate::game::native_hooks::NativeScreenView<'_>", value = "screen" },
+]
+
+[[injection]]
+id = "mouse"
+hook = "screen_mouse_button_pressed_pre"
+hook_version = 1
+kind = "HEAD"
+helper = "mouse.rs"
+bindings = [
+  { name = "game", ty = "&crate::game::Game<'_>", value = "&*self" },
+  { name = "screen", ty = "&crate::game::native_hooks::NativeScreenView<'_>", value = "screen" },
+  { name = "button", ty = "i32", value = "button" },
+  { name = "canceled", ty = "&mut bool", value = "&mut *canceled" },
+]
+
+[[injection]]
+id = "release"
+hook = "screen_mouse_button_released_pre"
+hook_version = 1
+kind = "HEAD"
+helper = "release.rs"
+bindings = [
+  { name = "game", ty = "&crate::game::Game<'_>", value = "&*self" },
+  { name = "canceled", ty = "&mut bool", value = "&mut *canceled" },
+]
+
+[[injection]]
+id = "drag"
+hook = "screen_mouse_dragged_pre"
+hook_version = 1
+kind = "HEAD"
+helper = "drag.rs"
+bindings = [
+  { name = "game", ty = "&crate::game::Game<'_>", value = "&*self" },
+  { name = "screen", ty = "&crate::game::native_hooks::NativeScreenView<'_>", value = "screen" },
+  { name = "canceled", ty = "&mut bool", value = "&mut *canceled" },
+]
+
+[[injection]]
+id = "scroll"
+hook = "screen_mouse_scrolled_pre"
+hook_version = 1
+kind = "HEAD"
+helper = "scroll.rs"
+bindings = [
+  { name = "game", ty = "&crate::game::Game<'_>", value = "&*self" },
+  { name = "screen", ty = "&crate::game::native_hooks::NativeScreenView<'_>", value = "screen" },
+  { name = "scroll", ty = "[f64; 2]", value = "scroll" },
+  { name = "canceled", ty = "&mut bool", value = "&mut *canceled" },
+]
+
+[[injection]]
+id = "keys"
+hook = "screen_key_pressed_pre"
+hook_version = 1
+kind = "HEAD"
+helper = "keys.rs"
+bindings = [
+  { name = "game", ty = "&crate::game::Game<'_>", value = "&*self" },
+  { name = "key", ty = "&str", value = "key" },
+  { name = "modifiers", ty = "u32", value = "modifiers" },
+  { name = "canceled", ty = "&mut bool", value = "&mut *canceled" },
+]
+
+[[injection]]
+id = "chars"
+hook = "screen_char_typed_pre"
+hook_version = 1
+kind = "HEAD"
+helper = "chars.rs"
+bindings = [
+  { name = "game", ty = "&crate::game::Game<'_>", value = "&*self" },
+  { name = "c", ty = "char", value = "c" },
+  { name = "canceled", ty = "&mut bool", value = "&mut *canceled" },
+]
+
+[[injection]]
+id = "command"
+hook = "command"
+hook_version = 1
+kind = "HEAD"
+helper = "command.rs"
+bindings = [
+  { name = "game", ty = "&mut crate::game::Game<'_>", value = "&mut *self" },
+  { name = "command", ty = "&str", value = "command" },
+  { name = "ran", ty = "&mut bool", value = "&mut *ran" },
+]
+
+[[injection]]
+id = "commands"
+hook = "commands"
+hook_version = 1
+kind = "HEAD"
+helper = "commands.rs"
+bindings = [
+  { name = "commands", ty = "&mut Vec<&'static str>", value = "&mut *commands" },
+]
+
+[[injection]]
+id = "stopping"
+hook = "client_stopping"
+hook_version = 1
+kind = "HEAD"
+helper = "stopping.rs"
+bindings = []
+
+[[injection]]
+id = "list"
+hook = "mods"
+hook_version = 1
+kind = "HEAD"
+helper = "list.rs"
+bindings = [
+  { name = "mods", ty = "&mut Vec<crate::game::native_hooks::NativeMod>", value = "&mut *mods" },
+]
+
+[[injection]]
+id = "settings"
+hook = "settings"
+hook_version = 1
+kind = "HEAD"
+helper = "settings.rs"
+bindings = [
+  { name = "game", ty = "&mut crate::game::Game<'_>", value = "&mut *self" },
+  { name = "mod_id", ty = "&str", value = "mod_id" },
+  { name = "buttons", ty = "&mut Vec<String>", value = "&mut *buttons" },
+]
+
+[[injection]]
+id = "click"
+hook = "settings_click"
+hook_version = 1
+kind = "HEAD"
+helper = "click.rs"
+bindings = [
+  { name = "game", ty = "&mut crate::game::Game<'_>", value = "&mut *self" },
+  { name = "mod_id", ty = "&str", value = "mod_id" },
+  { name = "button", ty = "usize", value = "button" },
+]
