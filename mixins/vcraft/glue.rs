@@ -42,7 +42,17 @@ fn world(game: &Game<'_>) -> vc::World {
         .into_iter()
         .filter_map(|e| Some((vc::util::uuid_string(e.player_uuid?), e.position)))
         .collect();
-    vc::World { server, me, players, now_playing_on: game.native_on("nowplaying") }
+    let keys = vc::KEYS.iter().map(|(name, _, default)| (name.to_string(), game.native_mod_key(vc::ID, name, default))).collect();
+    vc::World {
+        server,
+        me,
+        players,
+        now_playing_on: game.native_on("nowplaying"),
+        paused: game.screen == super::Screen::Paused,
+        focused: game.focused,
+        language: horizon_client::lang::code(),
+        keys,
+    }
 }
 
 /// Draws an engine draw list onto `batch`.

@@ -168,6 +168,10 @@ impl Core {
     }
 
     pub fn reset(&mut self) {
+        self.prepare_rejoin();
+        self.social.activity.clear();
+        self.social.requests.clear();
+        self.social.waiting_join.clear();
         let st = &mut self.st;
         st.my_uuid = None;
         st.my_name = None;
@@ -292,6 +296,10 @@ impl Core {
             "lobby_count" => self.st.lobby_online = i(o, "online"),
             "friends" => {
                 let f = profiles(self, o.get("friends"));
+                let gone: Vec<String> = f.iter().filter(|n| !n.online() && self.friend(&n.uuid).is_some_and(|p| p.online())).map(|n| n.uuid.clone()).collect();
+                for u in gone {
+                    self.note_presence(&u, true, "offline");
+                }
                 self.st.friends = sorted(f);
                 self.st.incoming = profiles(self, o.get("incoming"));
                 self.st.outgoing = profiles(self, o.get("outgoing"));
@@ -299,10 +307,9 @@ impl Core {
                 if !self.st.listening_synced {
                     self.st.listening_synced = true;
                     self.st.shared_song = self.shared_song();
-                    if self.st.shared_song.is_some() {
-                        let to = self.online_friends();
-                        self.send_listening(&to);
-                    }
+                    let _ = self.activity_changed();
+                    let to = self.online_friends();
+                    self.send_listening(&to);
                 }
             }
             "groups" => {
@@ -320,11 +327,13 @@ impl Core {
                 let me = self.me().unwrap_or_default();
                 let opened = crate::with_secure(|sec| sec.open(&from, &crypto::activity_aad(&from, &me), s(o, "body").as_deref()));
                 let (Some(json), true) = (opened, self.friend(&from).is_some()) else { return };
-                let song = serde_json::from_str::<Value>(&json).ok().and_then(|v| clean_song(s(&v, "song").as_deref(), 120));
+                let env = serde_json::from_str::<Value>(&json).unwrap_or(Value::Null);
+                let song = clean_song(s(&env, "song").as_deref(), 120);
                 match song {
-                    Some(song) => self.st.listening.insert(from, song),
+                    Some(song) => self.st.listening.insert(from.clone(), song),
                     None => self.st.listening.remove(&from),
                 };
+                self.on_activity(&from, &env);
             }
             "friend_request" => self.notify_user("Friend request", &format!("{} wants to be friends", s(o, "name").unwrap_or_default()), None),
             "friend_added" => self.notify_user("New friend", &format!("{} accepted your request", s(o, "name").unwrap_or_default()), None),
@@ -417,17 +426,19 @@ impl Core {
                     from_name: s(o, "fromName").unwrap_or_default(),
                     expires: now_ms() + 60_000,
                 };
-                if !self.is_blocked(&inv.from) {
+                if !self.is_blocked(&inv.from) && !self.auto_accept(&inv) {
                     let quiet = self.quiet(Some(&inv.from));
-                    let name = inv.from_name.clone();
+                    let name = self.cfg.display_name(&inv.from, &inv.from_name);
+                    let who = crate::dlog::who(&inv.from);
                     self.st.invites.retain(|_, v| v.call_id != inv.call_id);
                     self.st.invite_seq += 1;
                     let seq = self.st.invite_seq;
                     self.st.invites.insert(seq, inv);
                     if !quiet {
-                        self.toast("Incoming call", &format!("{name} is calling you"));
-                        self.chat("Call", 0xFF55_FF55, &format!("{name} is calling you. Type /vc accept or open VCraft."));
+                        self.toast(crate::i18n::t("Incoming call"), &crate::i18n::tf("{0} is calling you", &[&name]));
+                        self.chat("Call", 0xFF55_FF55, &crate::i18n::tf("{0} is calling you. Type /vc accept or open VCraft.", &[&name]));
                     }
+                    crate::dlog::line(&format!("call: invited by {who}"));
                 }
             }
             "call" => {
@@ -442,9 +453,18 @@ impl Core {
                         let id = s(j, "id").unwrap_or_default();
                         self.st.invites.retain(|_, v| v.call_id != id);
                         let ringing = profiles(self, j.get("ringing"));
+                        if self.st.call.is_none() {
+                            crate::dlog::line(&format!("call: joined ({} in it)", list.len()));
+                        }
                         self.set_call(Some(Call { id, members: list, ringing }));
+                        self.note_call_members();
                     }
-                    None => self.set_call(None),
+                    None => {
+                        if self.st.call.is_some() {
+                            crate::dlog::line("call: left");
+                        }
+                        self.set_call(None);
+                    }
                 }
                 self.secure_on_call();
             }
@@ -516,7 +536,8 @@ impl Core {
         let Some(m) = self.addons_filter(conv, m) else { return };
         self.addons_message(conv, &m);
         let from_me = Some(&m.from) == self.st.my_uuid.as_ref();
-        let (from, from_name) = (m.from.clone(), m.from_name.clone());
+        let (from, from_name) = (m.from.clone(), self.cfg.display_name(&m.from, &m.from_name));
+        let group_muted = self.group_muted(conv);
         let preview = match (&m.invite, &m.song) {
             (Some(inv), _) => format!("invited you to {}", inv.name),
             (None, Some(song)) => format!("is listening to {song}"),
@@ -527,9 +548,12 @@ impl Core {
             *self.st.unread.entry(conv.to_owned()).or_default() += 1;
             let where_ = conv.starts_with("g:").then(|| self.conv_name(conv));
             let title = match &where_ {
-                Some(w) => format!("{from_name} in {w}"),
+                Some(w) => crate::i18n::tf("{0} in {1}", &[&from_name, w]),
                 None => from_name.clone(),
             };
+            if group_muted {
+                return;
+            }
             self.notify_user(&title, &preview, Some(&from));
             if !self.quiet(Some(&from)) {
                 self.chat(where_.as_deref().unwrap_or("DM"), 0xFFFF_77FF, &format!("{from_name}: {preview}"));
@@ -598,9 +622,10 @@ impl Core {
 
     fn update_presence(&mut self, uuid: &str, status: &str) {
         let before = self.friend(uuid).cloned();
+        self.note_presence(uuid, before.as_ref().is_some_and(Profile::online), status);
         if status == "offline" {
             self.st.listening.remove(uuid);
-        } else if before.as_ref().is_some_and(|b| !b.online()) && self.st.shared_song.is_some() {
+        } else if before.as_ref().is_some_and(|b| !b.online()) && (self.st.shared_song.is_some() || self.cfg.share_server) {
             self.send_listening(&[uuid.to_owned()]);
         }
         let fix = |p: &Profile| if p.uuid == uuid { Profile { uuid: uuid.to_owned(), name: p.name.clone(), status: status.to_owned() } } else { p.clone() };
@@ -706,15 +731,20 @@ impl Core {
         }
         self.update_ringing();
         self.addons_tick();
+        self.social_tick();
         if now >= self.st.next_listening_check && self.st.listening_synced && crate::relay().connected() {
-            self.st.next_listening_check = now + 5000;
-            let song = self.shared_song();
-            if song != self.st.shared_song {
-                self.st.shared_song = song;
+            self.st.next_listening_check = now + 2000;
+            self.st.shared_song = self.shared_song();
+            if self.activity_changed() {
                 let to = self.online_friends();
                 self.send_listening(&to);
             }
         }
+    }
+
+    /// The song being shared with friends right now.
+    pub fn shared_song_now(&self) -> Option<String> {
+        self.st.shared_song.clone()
     }
 
     fn shared_song(&self) -> Option<String> {
@@ -729,22 +759,9 @@ impl Core {
         self.st.friends.iter().filter(|p| p.online()).map(|p| p.uuid.clone()).collect()
     }
 
+    /// The song, and on Horizon where you play and whether you're in a call.
     fn send_listening(&mut self, to: &[String]) {
-        let mut env = Map::new();
-        if let Some(song) = &self.st.shared_song {
-            env.insert("song".into(), song.clone().into());
-        }
-        let env = Value::Object(env).to_string();
-        let me = self.me().unwrap_or_default();
-        let mut payloads = Map::new();
-        for uuid in to {
-            if let Some(sealed) = crate::with_secure(|sec| sec.seal(uuid, &crypto::activity_aad(&me, uuid), &env)) {
-                payloads.insert(uuid.clone(), sealed.into());
-            }
-        }
-        if !payloads.is_empty() {
-            self.send_json(json!({ "t": "activity", "payloads": payloads }));
-        }
+        self.send_activity(to, None);
     }
 
     fn update_ringing(&mut self) {
@@ -1001,8 +1018,8 @@ impl Core {
         self.changed();
     }
 
-    fn send_voice_state(&self) {
-        self.send_json(json!({ "t": "state", "muted": self.st.muted || self.st.deafened, "deafened": self.st.deafened }));
+    pub fn send_voice_state(&self) {
+        self.send_json(json!({ "t": "state", "muted": self.st.muted || self.st.deafened || self.auto_muted, "deafened": self.st.deafened }));
     }
 
     pub fn toggle_user_mute(&mut self, uuid: &str) {
@@ -1039,7 +1056,7 @@ impl Core {
         if let Some(g) = self.group(conv) {
             return g.name.clone();
         }
-        self.friend(conv).map_or_else(|| "Unknown".into(), |f| f.name.clone())
+        self.friend(conv).map_or_else(|| "Unknown".into(), |f| self.cfg.display_name(&f.uuid, &f.name))
     }
 
     pub fn conversation_exists(&self, conv: Option<&str>) -> bool {

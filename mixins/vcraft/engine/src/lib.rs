@@ -14,9 +14,14 @@ pub mod commands;
 pub mod config;
 pub mod crypto;
 pub mod denoise;
+pub mod dlog;
+pub mod echo;
+pub mod effects;
 pub mod gfx;
 pub mod hud;
+pub mod i18n;
 pub mod media;
+pub mod social;
 pub mod relay;
 pub mod screen;
 pub mod skins;
@@ -36,18 +41,45 @@ pub use gfx::Draw;
 
 pub const ID: &str = "vcraft";
 pub const NAME: &str = "VCraft";
-pub const VERSION: &str = "2.4.0";
+pub const VERSION: &str = "2.5.0";
 pub const DESCRIPTION: &str =
     "Voice calls, group chats and direct messages with your friends from anywhere in Minecraft. End-to-end encrypted.";
 pub const COMMAND: &str = "vc";
 
-/// Keys: (name, label, default binding), as the Fabric mod binds them.
-pub const KEYS: [(&str, &str, &str); 4] = [
+/// Keys: (name, label, default binding), as the Fabric mod binds them, then
+/// Horizon's own (unbound until the player picks a key).
+pub const KEYS: [(&str, &str, &str); 7] = [
     ("open", "Open VCraft", "key.keyboard.o"),
     ("push_to_talk", "Push to Talk", "key.keyboard.v"),
     ("mute", "Toggle Mute", "key.keyboard.m"),
     ("deafen", "Toggle Deafen", "key.keyboard.n"),
+    ("accept_call", "Accept Call", "key.keyboard.unknown"),
+    ("hang_up", "Hang Up / Decline", "key.keyboard.unknown"),
+    ("compact_hud", "Toggle Compact HUD", "key.keyboard.unknown"),
 ];
+
+/// "key.keyboard.left.shift" -> "Left Shift", "key.mouse.4" -> "Mouse 4".
+pub fn key_label(key: &str) -> String {
+    if key.is_empty() || key == "key.keyboard.unknown" {
+        return i18n::t("Not bound").to_owned();
+    }
+    let (mouse, rest) = match key.strip_prefix("key.mouse.") {
+        Some(r) => (true, r),
+        None => (false, key.strip_prefix("key.keyboard.").unwrap_or(key)),
+    };
+    let words: Vec<String> = rest
+        .split('.')
+        .map(|w| {
+            let mut c = w.chars();
+            match c.next() {
+                Some(f) => f.to_uppercase().collect::<String>() + c.as_str(),
+                None => String::new(),
+            }
+        })
+        .collect();
+    let label = words.join(" ");
+    if mouse { format!("Mouse {label}") } else { label }
+}
 
 /// What the game should do, drained by the glue each tick.
 #[derive(Clone, Debug)]
@@ -73,6 +105,14 @@ pub struct World {
     pub players: Vec<(String, [f64; 3])>,
     /// The Now Playing mod is turned on.
     pub now_playing_on: bool,
+    /// The pause menu is open.
+    pub paused: bool,
+    /// The game window has the focus.
+    pub focused: bool,
+    /// The game's language code (`en_us`, `fr_fr`...).
+    pub language: String,
+    /// The VCraft keys as bound: (name, key).
+    pub keys: Vec<(String, String)>,
 }
 
 /// Who is signed in, from the launcher's account.
@@ -97,6 +137,11 @@ pub struct Core {
     np_sharing: (bool, i64),
     started: bool,
     ptt_held: bool,
+    /// Muted by the pause menu or the window losing focus (not by the player).
+    pub auto_muted: bool,
+    /// The friends, calls, pins and requests of the 2.5 social features.
+    pub social: social::Social,
+    last_logged: (Option<relay::Status>, Option<String>),
 }
 
 static CORE: LazyLock<Mutex<Option<Core>>> = LazyLock::new(|| Mutex::new(None));
@@ -127,6 +172,8 @@ pub fn with<R>(config_dir: impl FnOnce() -> Option<PathBuf>, account: impl FnOnc
     if g.is_none() {
         let dir = config_dir()?;
         let cfg = Config::load(&dir);
+        dlog::init(&dir, cfg.debug_log);
+        dlog::line(&format!("VCraft {VERSION} for Horizon started"));
         let account = account();
         let account_id = account.as_ref().map(|a| a.uuid.clone().unwrap_or_else(|| a.name.clone())).unwrap_or_default();
         let signing = Signing::load(&dir, &account_id);
@@ -137,6 +184,7 @@ pub fn with<R>(config_dir: impl FnOnce() -> Option<PathBuf>, account: impl FnOnc
                 st
             },
             addons: addons::Addons::load(&dir),
+            social: social::Social::load(&cfg),
             cfg,
             fx: Vec::new(),
             toasts: Vec::new(),
@@ -148,6 +196,8 @@ pub fn with<R>(config_dir: impl FnOnce() -> Option<PathBuf>, account: impl FnOnc
             np_sharing: (true, 0),
             started: false,
             ptt_held: false,
+            auto_muted: false,
+            last_logged: (None, None),
         };
         let v = VOICE.clone();
         RELAY.set_voice_sink(Arc::new(move |data: &[u8]| v.receive(data)));
@@ -191,7 +241,9 @@ impl Core {
     /// The voice threads' view of the state and settings.
     pub fn push_voice_params(&mut self) {
         let mut p = voice().params.lock().unwrap();
-        p.muted = self.st.muted;
+        p.muted = self.st.muted || self.auto_muted;
+        p.echo_cancellation = self.cfg.echo_cancellation;
+        p.effect = self.cfg.voice_effect.clone();
         p.deafened = self.st.deafened;
         p.active = self.voice_active();
         p.in_call = self.st.call.is_some();
@@ -236,6 +288,42 @@ impl Core {
             l.starts_with("sharing") && l.split(['=', ':']).nth(1).is_some_and(|v| v.trim().eq_ignore_ascii_case("false"))
         });
     }
+
+    /// Logs the relay's and the audio's state when they change.
+    fn log_status(&mut self) {
+        let st = relay().status();
+        let err = relay().last_error().or_else(|| voice().error());
+        if self.last_logged.0 != Some(st) {
+            let why = if st == relay::Status::Disconnected { relay().last_error().map(|e| format!(" ({e})")).unwrap_or_default() } else { String::new() };
+            dlog::line(&format!("relay: {st:?}{why}"));
+        }
+        if err != self.last_logged.1 {
+            if let Some(e) = voice().error().filter(|e| Some(e) != self.last_logged.1.as_ref()) {
+                dlog::line(&format!("audio: {e}"));
+            }
+        }
+        self.last_logged = (Some(st), err);
+    }
+
+    /// The bound key for one of [`KEYS`], as the game reported it.
+    pub fn key_bound(&self, name: &str) -> String {
+        self.world
+            .keys
+            .iter()
+            .find(|(n, _)| n == name)
+            .map(|(_, k)| k.clone())
+            .or_else(|| KEYS.iter().find(|k| k.0 == name).map(|k| k.2.to_owned()))
+            .unwrap_or_default()
+    }
+
+    /// Unread messages, without muted groups.
+    pub fn unread_total(&self) -> i64 {
+        self.st.unread.iter().filter(|(conv, _)| !self.group_muted(conv)).map(|(_, n)| *n).sum()
+    }
+
+    pub fn group_muted(&self, conv: &str) -> bool {
+        conv.strip_prefix("g:").is_some_and(|g| self.cfg.muted_groups.contains(g))
+    }
 }
 
 fn account_or_none() -> Option<Account> {
@@ -246,8 +334,16 @@ fn account_or_none() -> Option<Account> {
 pub fn tick(config_dir: impl FnOnce() -> Option<PathBuf>, account: impl FnOnce() -> Option<Account>, world: World, ptt_held: bool) -> Vec<Effect> {
     with(config_dir, account, |c| {
         c.server = world.server.clone();
+        i18n::set(if c.cfg.language == "game" { &world.language } else { &c.cfg.language });
+        let auto = (c.cfg.auto_mute_paused && world.paused) || (c.cfg.auto_mute_unfocused && !world.focused);
         c.world = world;
         c.ptt_held = ptt_held;
+        if auto != c.auto_muted {
+            c.auto_muted = auto;
+            c.send_voice_state();
+            c.changed();
+        }
+        c.log_status();
         c.refresh_np_sharing();
         if !c.started {
             c.started = true;
@@ -276,6 +372,8 @@ pub fn shutdown() {
     if let Some(c) = core().as_mut() {
         c.started = false;
         c.reset();
+        c.social.rejoin = None;
+        dlog::line("stopped");
     }
 }
 
@@ -290,6 +388,21 @@ pub fn key(name: &str) {
         "open" => c.fx.push(Effect::OpenScreen),
         "mute" => c.toggle_mute(),
         "deafen" => c.toggle_deafen(),
+        "accept_call" => match c.latest_invite() {
+            Some(inv) => c.accept_invite(&inv.call_id),
+            None => c.toast("VCraft", i18n::t("Nobody is calling you.")),
+        },
+        "hang_up" => {
+            if let Some(inv) = c.latest_invite() {
+                c.decline_invite(&inv.call_id);
+            } else if c.st.call.is_some() {
+                c.send("call_leave", None, None);
+            }
+        }
+        "compact_hud" => {
+            c.cfg.hud_compact = !c.cfg.hud_compact;
+            c.cfg.save();
+        }
         _ => {}
     });
 }
@@ -372,6 +485,8 @@ pub fn settings_buttons() -> Vec<String> {
             format!("Addon - Proximity Chat: {}", on(c.cfg.addon_proximity)),
             format!("Addon - Announcements: {}", on(c.cfg.addon_announcements)),
             format!("Addon - Group Rules: {}", on(c.cfg.addon_grouprules)),
+            format!("Echo cancellation: {}", on(c.cfg.echo_cancellation)),
+            format!("Compact HUD: {}", on(c.cfg.hud_compact)),
             "Open VCraft (more settings inside)".to_owned(),
         ]
     })
@@ -394,7 +509,12 @@ pub fn settings_click(button: usize) {
             }
             6 => c.cfg.addon_announcements = !c.cfg.addon_announcements,
             7 => c.cfg.addon_grouprules = !c.cfg.addon_grouprules,
-            8 => c.fx.push(Effect::OpenScreen),
+            8 => {
+                c.cfg.echo_cancellation = !c.cfg.echo_cancellation;
+                c.push_voice_params();
+            }
+            9 => c.cfg.hud_compact = !c.cfg.hud_compact,
+            10 => c.fx.push(Effect::OpenScreen),
             _ => {}
         }
         c.cfg.save();

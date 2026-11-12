@@ -1,6 +1,6 @@
 [package]
 name = "vcraft-engine"
-version = "2.4.0"
+version = "2.5.0"
 edition = "2024"
 license = "MIT"
 description = "VCraft for Horizon: voice calls, group chats and direct messages with friends, end-to-end encrypted"

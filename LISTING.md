@@ -6,9 +6,9 @@ you submit, if you like.
 | Field | Value |
 |---|---|
 | Kind | Native mod |
-| File | `vcraft-2.4.0.hnmod` |
+| File | `vcraft-2.5.0.hnmod` |
 | Id | `vcraft` |
-| Version | `2.4.0` |
+| Version | `2.5.0` |
 | Minecraft version | `26.3` |
 | Name | VCraft |
 | Licence (SPDX) | `MIT` |
@@ -21,9 +21,9 @@ you submit, if you like.
 
 Voice calls, group chats and direct messages with your friends from anywhere in Minecraft, end-to-end encrypted.
 
-## What changed (first release)
+## What changed (2.5.0)
 
-First release on Horizon: a native port of VCraft with voice calls, DMs, group chats, and the Proximity, Announcements and Group rules addons. New in 2.4.0: microphone noise suppression (on by default, switch in Settings > Voice).
+Ask to join a friend's call, rejoin calls after a dropped connection, auto-mute when paused or tabbed out, echo cancellation for speakers, voice effects. Friend nicknames and notes, last seen, and what friends are playing. Mute groups, group invite codes, personal pinned messages. Unread badge and compact call HUD, new keys, seven new languages, and a debug log for bug reports.
 
 ## Description (Markdown, at least 50 characters)
 

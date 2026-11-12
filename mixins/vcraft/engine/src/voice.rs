@@ -33,6 +33,10 @@ pub struct Params {
     /// Run the microphone through [`crate::denoise::Denoiser`].
     pub noise_suppression: bool,
     pub output_volume: f64,
+    /// Cancel what the speakers play back into the microphone.
+    pub echo_cancellation: bool,
+    /// The voice effect ([`crate::effects::EFFECTS`]).
+    pub effect: String,
     pub muted_users: HashSet<String>,
     /// Proximity Chat's volume per player in a room (absent: full volume).
     pub room_gains: Option<HashMap<String, f64>>,
@@ -54,6 +58,8 @@ pub struct Voice {
     mic_level_db: Mutex<f32>,
     error: Mutex<Option<String>>,
     pub last_spoke: Mutex<HashMap<String, Instant>>,
+    /// What the speakers played, for echo cancellation.
+    far: crate::echo::FarEnd,
 }
 
 struct MicQueue {
@@ -72,6 +78,7 @@ impl Voice {
             mic_level_db: Mutex::new(-100.0),
             error: Mutex::new(None),
             last_spoke: Mutex::default(),
+            far: crate::echo::FarEnd::default(),
         }
     }
 
@@ -197,9 +204,14 @@ impl Voice {
                 }
             }
         }
-        let p = self.params.lock().unwrap();
-        let volume = if p.deafened { 0.0 } else { p.output_volume };
-        std::array::from_fn(|i| (mix[i] as f64 * volume).clamp(-32768.0, 32767.0) as i16)
+        let volume = {
+            let p = self.params.lock().unwrap();
+            if p.deafened { 0.0 } else { p.output_volume }
+        };
+        let out: [i16; FRAME_SAMPLES] = std::array::from_fn(|i| (mix[i] as f64 * volume).clamp(-32768.0, 32767.0) as i16);
+        let played: Vec<f32> = out.iter().map(|s| *s as f32 / 32768.0).collect();
+        self.far.push(&played);
+        out
     }
 
     fn audio_thread(self: Arc<Self>, run_id: u64) {
@@ -236,6 +248,9 @@ impl Voice {
         let mut encoder = adpcm::Encoder::default();
         let mut denoiser = crate::denoise::Denoiser::new();
         let mut denoising = false;
+        let mut aec = crate::echo::Aec::new();
+        let mut cancelling = false;
+        let mut fx = crate::effects::VoiceFx::new();
         let mut hangover_until = Instant::now();
         while self.alive(run_id) {
             let mut frame: Vec<i16> = {
@@ -249,6 +264,21 @@ impl Voice {
                 q.drain(..FRAME_SAMPLES).collect()
             };
             let p = self.params.lock().unwrap().clone();
+            // Echo first, on the raw microphone: it's what the filter learns.
+            if p.echo_cancellation {
+                if !cancelling {
+                    aec.reset();
+                    cancelling = true;
+                }
+                aec.feed_far(&self.far);
+                let mut f: Vec<f32> = frame.iter().map(|s| *s as f32 / 32768.0).collect();
+                aec.process(&mut f);
+                for (s, v) in frame.iter_mut().zip(f) {
+                    *s = (v.clamp(-1.0, 1.0) * 32767.0) as i16;
+                }
+            } else {
+                cancelling = false;
+            }
             // Before the level meter and the voice activity gate, so noise
             // alone no longer opens the gate.
             if p.noise_suppression {
@@ -284,6 +314,8 @@ impl Voice {
             if !talking {
                 continue;
             }
+            let mut pcm = pcm;
+            fx.process(&p.effect, &mut pcm);
             if self.mic_test() && !p.active {
                 self.enqueue("self-test", pcm);
             } else if !p.muted && !p.deafened && p.active {

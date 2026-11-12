@@ -98,6 +98,11 @@ impl Relay {
         self.status() == Status::Connected
     }
 
+    /// The player wants to be connected (it wasn't turned off).
+    pub fn wanted(&self) -> bool {
+        self.shared.lock().unwrap().wanted
+    }
+
     pub fn last_error(&self) -> Option<String> {
         self.shared.lock().unwrap().last_error.clone()
     }
