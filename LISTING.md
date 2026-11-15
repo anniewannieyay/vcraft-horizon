@@ -13,7 +13,7 @@ you submit, if you like.
 | Name | VCraft |
 | Licence (SPDX) | `MIT` |
 | Source | `https://github.com/anniewannieyay/vcraft-horizon` |
-| Icon | `icon.png` (384x384 PNG, 154 KiB) |
+| Icon | `icon.png` (512x512 PNG, 102 KiB) |
 | Categories (1 to 3) | Social, Utility (pick the closest from the form's list) |
 | Tags (optional) | `voice-chat`, `chat`, `encryption`, `friends`, `proximity-chat` |
 

@@ -114,6 +114,8 @@ with the relay address field in VCraft's settings.
 
 ```
 compatibility.json          Horizon and horizon-mixins commits this builds against
+icon.png                    the mod icon (512x512)
+art/                        the icon as a layered PSD, and the Java program that draws it
 mixins/vcraft/
   horizon-mixin.toml        the bundle manifest: hooks, glue module, engine crate
   *.rs                      one small helper per hook point
