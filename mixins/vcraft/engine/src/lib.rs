@@ -41,7 +41,7 @@ pub use gfx::Draw;
 
 pub const ID: &str = "vcraft";
 pub const NAME: &str = "VCraft";
-pub const VERSION: &str = "2.5.0";
+pub const VERSION: &str = "2.5.1";
 pub const DESCRIPTION: &str =
     "Voice calls, group chats and direct messages with your friends from anywhere in Minecraft. End-to-end encrypted.";
 pub const COMMAND: &str = "vc";

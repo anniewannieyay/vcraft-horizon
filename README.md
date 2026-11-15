@@ -5,7 +5,7 @@ in Minecraft, end-to-end encrypted. This is the native Horizon port of the
 VCraft Fabric mod.
 
 - **Mod id:** `vcraft`
-- **Version:** 2.5.0
+- **Version:** 2.5.1
 - **Game:** Minecraft 26.3 (Horizon, pinned to commit `fdc87aec`)
 - **Kind:** native mod (`.hnmod`)
 - **Licence:** MIT
@@ -110,10 +110,10 @@ On Windows, use WSL for the check and package steps. From a checkout of
 python3 native/tools/native.py check /path/to/vcraft-horizon
 python3 native/tools/native.py check --horizon latest /path/to/vcraft-horizon
 python3 native/tools/native.py package /path/to/vcraft-horizon
-cargo horizon-mod check native/target/vcraft-2.5.0.hnmod
+cargo horizon-mod check native/target/vcraft-2.5.1.hnmod
 ```
 
-`package` writes `native/target/vcraft-2.5.0.hnmod` and prints its SHA-256.
+`package` writes `native/target/vcraft-2.5.1.hnmod` and prints its SHA-256.
 
 The engine's own tests run without Horizon: `cargo test` in
 `mixins/vcraft/engine` (with Horizon's `Cargo.lock` copied in, so the same

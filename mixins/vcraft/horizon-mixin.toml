@@ -1,6 +1,6 @@
 [mod]
 id = "vcraft"
-version = "2.5.0"
+version = "2.5.1"
 priority = 0
 
 # Pinned: its glue reads the game's connection and players inside `game`

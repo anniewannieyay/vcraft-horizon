@@ -384,15 +384,34 @@ fn session(shared: &Arc<Mutex<Shared>>, run_id: u64, login: &Login, voice: Optio
 fn handle(shared: &Arc<Mutex<Shared>>, o: &Value, login: &Login) {
     let t = o["t"].as_str().unwrap_or("");
     if t == "challenge" {
-        let server_id = o["serverId"].as_str().unwrap_or("").to_owned();
+        let nonce = o["nonce"].as_str().unwrap_or("").to_owned();
         let offline = o["offline"].as_bool().unwrap_or(false);
+        // The Mojang session id is derived here, never taken from the relay:
+        // a relay that could pick it could hand over the hash of a handshake
+        // it is doing with a real online-mode server and be let in as us.
+        let server_id = match parse_url(&login.url) {
+            Some(url) if valid_nonce(&nonce) => Some(session_server_id(&url.host, &nonce)),
+            _ => None,
+        };
+        if !offline && server_id.is_none() {
+            let mut s = shared.lock().unwrap();
+            let text = "This relay doesn't support safe sign-in (it sent no nonce). Update the relay, or pick another in Settings.".to_owned();
+            s.auth_error = Some(text.clone());
+            s.last_error = Some(text);
+            s.wanted = false;
+            s.generation += 1;
+            s.status = Status::Disconnected;
+            s.outgoing.clear();
+            s.events.push_back(Event::Reset);
+            return;
+        }
         let (shared, login) = (shared.clone(), login.clone());
         let _ = std::thread::Builder::new().name("VCraft Login".into()).spawn(move || {
             if let Err(e) = crate::with_secure(|sec| sec.init(&login.config_dir, &login.account_id)) {
                 eprintln!("VCraft could not load its encryption keys: {e}");
             }
-            if !offline {
-                if let Err(e) = (login.authenticate)(&server_id) {
+            if let (false, Some(server_id)) = (offline, server_id.as_deref()) {
+                if let Err(e) = (login.authenticate)(server_id) {
                     eprintln!("VCraft: Mojang session join failed: {e}");
                 }
             }
@@ -419,9 +438,68 @@ fn handle(shared: &Arc<Mutex<Shared>>, o: &Value, login: &Login) {
     s.events.push_back(Event::Message(o.clone()));
 }
 
+/// The prefix of the Mojang session id a VCraft client joins for a relay.
+pub const SESSION_PREFIX: &str = "vcraft-relay-v1";
+
+/// A nonce the relay sent: 16 to 128 characters of `[A-Za-z0-9_-]`.
+pub fn valid_nonce(nonce: &str) -> bool {
+    (16..=128).contains(&nonce.len()) && nonce.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-')
+}
+
+/// The session id joined for relay `host` and its `nonce`: Minecraft's hex
+/// digest (signed, no leading zeros) of SHA-1 over
+/// `vcraft-relay-v1|<host, lowercase>|<nonce>`. The relay checks `hasJoined`
+/// with the same value, and can't make it equal a real server's hash.
+pub fn session_server_id(host: &str, nonce: &str) -> String {
+    let text = format!("{SESSION_PREFIX}|{}|{nonce}", host.to_ascii_lowercase());
+    let digest = ring::digest::digest(&ring::digest::SHA1_FOR_LEGACY_USE_ONLY, text.as_bytes());
+    minecraft_hex(digest.as_ref())
+}
+
+/// Java's `new BigInteger(digest).toString(16)`, as Minecraft writes server hashes.
+pub fn minecraft_hex(digest: &[u8]) -> String {
+    let mut bytes = digest.to_vec();
+    let negative = bytes.first().is_some_and(|b| b & 0x80 != 0);
+    if negative {
+        let mut carry = true;
+        for b in bytes.iter_mut().rev() {
+            *b = !*b;
+            if carry {
+                let (v, c) = b.overflowing_add(1);
+                *b = v;
+                carry = c;
+            }
+        }
+    }
+    let hex: String = bytes.iter().map(|b| format!("{b:02x}")).collect();
+    let trimmed = hex.trim_start_matches('0');
+    let body = if trimmed.is_empty() { "0" } else { trimmed };
+    if negative { format!("-{body}") } else { body.to_owned() }
+}
+
 #[cfg(test)]
 mod tests {
     use super::parse_url;
+
+    #[test]
+    fn minecraft_hex_digests() {
+        let h = |t: &str| super::minecraft_hex(ring::digest::digest(&ring::digest::SHA1_FOR_LEGACY_USE_ONLY, t.as_bytes()).as_ref());
+        assert_eq!(h("Notch"), "4ed1f46bbe04bc756bcb17c0c7ce3e4632f06a48");
+        assert_eq!(h("jeb_"), "-7c9d5b0044c130109a5d7b5fb5c317c02b4e28c1");
+        assert_eq!(h("simon"), "88e16a1019277b15d58faf0541e11910eb756f6");
+    }
+
+    #[test]
+    fn session_id_is_bound_to_host_and_nonce() {
+        let n = "AbCdEfGhIjKlMnOp0123";
+        assert!(super::valid_nonce(n));
+        assert!(!super::valid_nonce("short"));
+        assert!(!super::valid_nonce("has spaces in it here!!"));
+        let a = super::session_server_id("Relay.Example", n);
+        assert_eq!(a, super::session_server_id("relay.example", n));
+        assert_ne!(a, super::session_server_id("other.example", n));
+        assert_ne!(a, super::session_server_id("relay.example", "AbCdEfGhIjKlMnOp0124"));
+    }
 
     #[test]
     fn parses_relay_urls() {

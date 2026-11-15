@@ -6,9 +6,9 @@ you submit, if you like.
 | Field | Value |
 |---|---|
 | Kind | Native mod |
-| File | `vcraft-2.5.0.hnmod` |
+| File | `vcraft-2.5.1.hnmod` |
 | Id | `vcraft` |
-| Version | `2.5.0` |
+| Version | `2.5.1` |
 | Minecraft version | `26.3` |
 | Name | VCraft |
 | Licence (SPDX) | `MIT` |
