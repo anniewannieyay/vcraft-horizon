@@ -21,14 +21,16 @@ you submit, if you like.
 
 Voice calls, group chats and direct messages with your friends from anywhere in Minecraft, end-to-end encrypted.
 
-## What changed (2.5.0)
+## What changed (2.5.1)
 
-Ask to join a friend's call, rejoin calls after a dropped connection, auto-mute when paused or tabbed out, echo cancellation for speakers, voice effects. Friend nicknames and notes, last seen, and what friends are playing. Mute groups, group invite codes, personal pinned messages. Unread badge and compact call HUD, new keys, seven new languages, and a debug log for bug reports.
+Safer sign-in: the Mojang session id is now computed by VCraft from the relay's host and a fresh nonce, so a relay can't reuse your sign-in on a real server. Needs the updated relay. Also from 2.5.0: ask to join a friend's call, rejoin calls after a dropped connection, auto-mute when paused or tabbed out, echo cancellation for speakers, voice effects. Friend nicknames and notes, last seen, and what friends are playing. Mute groups, group invite codes, personal pinned messages. Unread badge and compact call HUD, new keys, seven new languages, and a debug log for bug reports.
 
 ## Description (Markdown, at least 50 characters)
 
 VCraft lets you talk to your friends from anywhere in Minecraft, whether
-you're in single player or on any server.
+you're in single player or on any server. This is the Horizon port of the
+[VCraft Fabric mod](https://modrinth.com/mod/vcraftimac) (MIT), by the same
+author: I made the original and maintain both.
 
 **Features**
 - 1:1 and group **voice calls**, with voice activity or push to talk
@@ -46,8 +48,13 @@ you're in single player or on any server.
 so here is everything it touches:
 - Connects to the VCraft relay (`wss://vcraft.2-31-104-109.sslip.io` by
   default, which you can change in settings) to deliver encrypted messages
-  and voice. The relay can't read them. It can see your IP address, your
-  username and public key, your status, and who you talk to and when.
+  and voice. The relay can't read them. I (the author) run the default relay
+  on a Hetzner server. It keeps your username, UUID, public key, friends,
+  groups and status until you delete your account; encrypted messages with
+  their sender and time for up to 365 days (300 per conversation); and
+  username-only connect/disconnect log lines. It uses your IP address only
+  while you're connected, to limit abuse, and doesn't store it. Voice is
+  never stored. Settings → Privacy downloads or deletes your data.
 - Uses your microphone and speakers only during a call.
 - Fetches player skins from Mojang's session server.
 - Only while the Now Playing mod is on, it runs a small hidden PowerShell,

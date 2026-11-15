@@ -2,7 +2,8 @@
 
 Voice calls, group chats and direct messages with your friends from anywhere
 in Minecraft, end-to-end encrypted. This is the native Horizon port of the
-VCraft Fabric mod.
+[VCraft Fabric mod](https://modrinth.com/mod/vcraftimac) (MIT licence), by
+the same author: I made the original VCraft and maintain both.
 
 - **Mod id:** `vcraft`
 - **Version:** 2.5.1
@@ -81,13 +82,33 @@ VCraft can see the name of the server you're on (or that you're in single
 player) and whether you're in a call. It's end-to-end encrypted, so the relay
 can't read it, and it's never sent while you're Invisible.
 
-### What the relay can see
+### The default relay: who runs it and what it keeps
+
+The default relay, `vcraft.2-31-104-109.sslip.io`, is run by me, the author
+of VCraft (GitHub: `anniewannieyay`), on a rented Hetzner server. Its source
+is the same relay the Fabric mod uses.
 
 Message text, group content and voice are encrypted end to end, so the relay
-can't read them. Like any server, it can see your IP address, your Minecraft
-username and public key, your online status, and who you message or call and
-when. You can run your own relay and point VCraft at it with the relay
-address field in VCraft's settings.
+can't read them. What it does keep:
+
+| Data | How long |
+|---|---|
+| Minecraft username and UUID, public encryption key | Until you delete your account |
+| Friends, friend requests, blocks, groups | Until you delete your account |
+| Online status and when you were last online | Until you delete your account |
+| Direct and group messages (encrypted), with sender, recipient and time | Up to 300 per conversation, deleted after 365 days |
+| VCraft Community (public lobby) messages, not encrypted | Latest 500, deleted after 365 days |
+| Server log lines when you connect or disconnect (username only) | As long as the server's system log keeps them |
+
+Your IP address is used while you're connected, to limit abuse (connections
+and sign-ins per address), and isn't stored. Voice is relayed live and never
+stored. Your Microsoft access token never leaves your computer: you sign in
+with a Mojang session check bound to the relay (see
+[docs/relay-auth.md](docs/relay-auth.md)).
+
+You can download or delete everything the relay has about you in VCraft →
+Settings → Privacy. You can also run your own relay and point VCraft at it
+with the relay address field in VCraft's settings.
 
 ## Layout
 
